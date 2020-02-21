@@ -25,12 +25,15 @@ set(link_core_HEADERS
   ${link_core_DIR}/NodeId.hpp
   ${link_core_DIR}/NodeState.hpp
   ${link_core_DIR}/PayloadEntries.hpp
+  ${link_core_DIR}/Optional.hpp
   ${link_core_DIR}/Peers.hpp
   ${link_core_DIR}/PeerState.hpp
   ${link_core_DIR}/Phase.hpp
   ${link_core_DIR}/PingResponder.hpp
   ${link_core_DIR}/SessionId.hpp
+  ${link_core_DIR}/SessionState.hpp
   ${link_core_DIR}/Sessions.hpp
+  ${link_core_DIR}/StartStopState.hpp
   ${link_core_DIR}/Tempo.hpp
   ${link_core_DIR}/Timeline.hpp
   ${link_core_DIR}/v1/Messages.hpp
@@ -54,7 +57,6 @@ set(link_discovery_HEADERS
   ${link_discovery_DIR}/PeerGateway.hpp
   ${link_discovery_DIR}/PeerGateways.hpp
   ${link_discovery_DIR}/Service.hpp
-  ${link_discovery_DIR}/Socket.hpp
   ${link_discovery_DIR}/UdpMessenger.hpp
   ${link_discovery_DIR}/v1/Messages.hpp
   PARENT_SCOPE
@@ -70,7 +72,6 @@ set(link_discovery_HEADERS
 set(link_platform_DIR ${CMAKE_CURRENT_SOURCE_DIR}/ableton/platforms)
 set(link_platform_HEADERS
   ${link_platform_DIR}/Config.hpp
-  ${link_platform_DIR}/asio/AsioService.hpp
   ${link_platform_DIR}/asio/AsioTimer.hpp
   ${link_platform_DIR}/asio/AsioWrapper.hpp
   ${link_platform_DIR}/asio/Context.hpp
@@ -79,7 +80,16 @@ set(link_platform_HEADERS
   ${link_platform_DIR}/asio/Util.hpp
 )
 
-if(UNIX)
+if(ESP_PLATFORM)
+  set(link_platform_HEADERS
+    ${link_platform_HEADERS}
+    ${link_platform_DIR}/esp32/Clock.hpp
+    ${link_platform_DIR}/esp32/Context.hpp
+    ${link_platform_DIR}/esp32/Esp32.hpp
+    ${link_platform_DIR}/esp32/Random.hpp
+    ${link_platform_DIR}/esp32/ScanIpIfAddrs.hpp
+  )
+elseif(UNIX)
   set(link_platform_HEADERS
     ${link_platform_HEADERS}
     ${link_platform_DIR}/posix/ScanIpIfAddrs.hpp
@@ -90,6 +100,7 @@ if(UNIX)
       ${link_platform_HEADERS}
       ${link_platform_DIR}/darwin/Clock.hpp
       ${link_platform_DIR}/darwin/Darwin.hpp
+      ${link_platform_DIR}/stl/Random.hpp
     )
   elseif(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
     set(link_platform_HEADERS
@@ -97,11 +108,13 @@ if(UNIX)
       ${link_platform_DIR}/linux/Clock.hpp
       ${link_platform_DIR}/linux/Linux.hpp
       ${link_platform_DIR}/stl/Clock.hpp
+      ${link_platform_DIR}/stl/Random.hpp
     )
   endif()
 elseif(WIN32)
   set(link_platform_HEADERS
     ${link_platform_HEADERS}
+    ${link_platform_DIR}/stl/Random.hpp
     ${link_platform_DIR}/windows/Clock.hpp
     ${link_platform_DIR}/windows/ScanIpIfAddrs.hpp
   )

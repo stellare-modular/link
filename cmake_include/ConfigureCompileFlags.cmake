@@ -24,10 +24,17 @@ if(UNIX)
   if(${CMAKE_CXX_COMPILER_ID} MATCHES Clang)
     set(build_flags_COMMON_LIST
       ${build_flags_COMMON_LIST}
+      "-Weverything"
       "-Werror"
+      "-Wno-c++98-compat"
+      "-Wno-c++98-compat-pedantic"
       "-Wno-deprecated"
-      "-Wno-global-constructors"
-      "-Wno-over-aligned"
+      "-Wno-disabled-macro-expansion"
+      "-Wno-exit-time-destructors"
+      "-Wno-padded"
+      "-Wno-reserved-id-macro"
+      "-Wno-unknown-warning-option"
+      "-Wno-unused-member-function"
     )
 
   # GCC-specific flags
@@ -102,6 +109,7 @@ elseif(${CMAKE_CXX_COMPILER_ID} STREQUAL MSVC)
     "/wd4711" # Function 'function' selected for inline expansion
     "/wd4738" # Storing 32-bit float result in memory, possible loss of performance
     "/wd4820" # 'Bytes': bytes padding added after construct 'member_name'
+    "/wd5045" # Compiler will insert Spectre mitigation for memory load if /Qspectre switch specified
   )
 
   if(MSVC_VERSION VERSION_GREATER 1800)
@@ -121,6 +129,7 @@ elseif(${CMAKE_CXX_COMPILER_ID} STREQUAL MSVC)
       ${build_flags_COMMON_LIST}
       "/wd4987" # nonstandard extension used: 'throw (...)'
       "/wd4774" # 'printf_s' : format string expected in argument 1 is not a string literal
+      "/wd5039" # "pointer or reference to potentially throwing function passed to extern C function under -EHc. Undefined behavior may occur if this function throws an exception."
     )
   endif()
 

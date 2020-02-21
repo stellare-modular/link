@@ -28,6 +28,9 @@
 #include <termios.h>
 #endif
 
+namespace
+{
+
 struct State
 {
   std::atomic<bool> running;
@@ -48,7 +51,7 @@ void disableBufferedInput()
 #if defined(LINK_PLATFORM_UNIX)
   termios t;
   tcgetattr(STDIN_FILENO, &t);
-  t.c_lflag &= ~ICANON;
+  t.c_lflag &= static_cast<unsigned long>(~ICANON);
   tcsetattr(STDIN_FILENO, TCSANOW, &t);
 #endif
 }
@@ -76,20 +79,24 @@ void printHelp()
   std::cout << "  start / stop: space" << std::endl;
   std::cout << "  decrease / increase tempo: w / e" << std::endl;
   std::cout << "  decrease / increase quantum: r / t" << std::endl;
+  std::cout << "  enable / disable start stop sync: s" << std::endl;
   std::cout << "  quit: q" << std::endl << std::endl;
 }
 
 void printState(const std::chrono::microseconds time,
-  const ableton::Link::Timeline timeline,
+  const ableton::Link::SessionState sessionState,
   const std::size_t numPeers,
-  const double quantum)
+  const double quantum,
+  const bool startStopSyncOn)
 {
-  const auto beats = timeline.beatAtTime(time, quantum);
-  const auto phase = timeline.phaseAtTime(time, quantum);
+  const auto beats = sessionState.beatAtTime(time, quantum);
+  const auto phase = sessionState.phaseAtTime(time, quantum);
+  const auto startStop = startStopSyncOn ? "on" : "off";
   std::cout << std::defaultfloat << "peers: " << numPeers << " | "
             << "quantum: " << quantum << " | "
-            << "tempo: " << timeline.tempo() << " | " << std::fixed << "beats: " << beats
-            << " | ";
+            << "start stop sync: " << startStop << " | "
+            << "tempo: " << sessionState.tempo() << " | " << std::fixed
+            << "beats: " << beats << " | ";
   for (int i = 0; i < ceil(quantum); ++i)
   {
     if (i < phase)
@@ -118,10 +125,10 @@ void input(State& state)
   } while ((inputRecord.EventType != KEY_EVENT) || inputRecord.Event.KeyEvent.bKeyDown);
   in = inputRecord.Event.KeyEvent.uChar.AsciiChar;
 #elif defined(LINK_PLATFORM_UNIX)
-  in = std::cin.get();
+  in = static_cast<char>(std::cin.get());
 #endif
 
-  const auto tempo = state.link.captureAppTimeline().tempo();
+  const auto tempo = state.link.captureAppSessionState().tempo();
   auto& engine = state.audioPlatform.mEngine;
 
   switch (in)
@@ -142,6 +149,9 @@ void input(State& state)
   case 't':
     engine.setQuantum(std::max(1., engine.quantum() + 1));
     break;
+  case 's':
+    engine.setStartStopSyncEnabled(!engine.isStartStopSyncEnabled());
+    break;
   case ' ':
     if (engine.isPlaying())
     {
@@ -157,6 +167,8 @@ void input(State& state)
   input(state);
 }
 
+} // namespace
+
 int main(int, char**)
 {
   State state;
@@ -167,9 +179,10 @@ int main(int, char**)
   while (state.running)
   {
     const auto time = state.link.clock().micros();
-    auto timeline = state.link.captureAppTimeline();
-    printState(
-      time, timeline, state.link.numPeers(), state.audioPlatform.mEngine.quantum());
+    auto sessionState = state.link.captureAppSessionState();
+    printState(time, sessionState, state.link.numPeers(),
+      state.audioPlatform.mEngine.quantum(),
+      state.audioPlatform.mEngine.isStartStopSyncEnabled());
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
   }
 

@@ -24,6 +24,8 @@
 #include <ableton/platforms/darwin/Darwin.hpp>
 #elif defined(LINK_PLATFORM_LINUX)
 #include <ableton/platforms/linux/Linux.hpp>
+#elif defined(ESP_PLATFORM)
+#include <ableton/platforms/esp32/Esp32.hpp>
 #endif
 
 #include <chrono>
@@ -80,7 +82,8 @@ struct Deserialize
 
 // Default size implementation. Works for primitive types.
 
-template <typename T>
+template <typename T,
+  typename std::enable_if<std::is_fundamental<T>::value>::type* = nullptr>
 std::uint32_t sizeInByteStream(T)
 {
   return sizeof(T);
@@ -235,29 +238,53 @@ struct Deserialize<int64_t>
   }
 };
 
-// overloads for std::chrono durations
-template <typename Rep, typename Ratio>
-std::uint32_t sizeInByteStream(const std::chrono::duration<Rep, Ratio> dur)
+// bool
+inline std::uint32_t sizeInByteStream(bool)
 {
-  return sizeInByteStream(dur.count());
+  return sizeof(uint8_t);
 }
 
-template <typename Rep, typename Ratio, typename It>
-It toNetworkByteStream(const std::chrono::duration<Rep, Ratio> dur, It out)
+template <typename It>
+It toNetworkByteStream(bool bl, It out)
 {
-  return toNetworkByteStream(dur.count(), std::move(out));
+  return toNetworkByteStream(static_cast<uint8_t>(bl), std::move(out));
 }
 
-template <typename Rep, typename Ratio>
-struct Deserialize<std::chrono::duration<Rep, Ratio>>
+template <>
+struct Deserialize<bool>
 {
   template <typename It>
-  static std::pair<std::chrono::duration<Rep, Ratio>, It> fromNetworkByteStream(
-    It begin, It end)
+  static std::pair<bool, It> fromNetworkByteStream(It begin, It end)
+  {
+    auto result =
+      Deserialize<uint8_t>::fromNetworkByteStream(std::move(begin), std::move(end));
+    return std::make_pair(result.first != 0, result.second);
+  }
+};
+
+// std::chrono::microseconds
+inline std::uint32_t sizeInByteStream(const std::chrono::microseconds micros)
+{
+  return sizeInByteStream(micros.count());
+}
+
+template <typename It>
+It toNetworkByteStream(const std::chrono::microseconds micros, It out)
+{
+  static_assert(sizeof(int64_t) == sizeof(std::chrono::microseconds::rep),
+    "The size of microseconds::rep must matche the size of int64_t.");
+  return toNetworkByteStream(static_cast<int64_t>(micros.count()), std::move(out));
+}
+
+template <>
+struct Deserialize<std::chrono::microseconds>
+{
+  template <typename It>
+  static std::pair<std::chrono::microseconds, It> fromNetworkByteStream(It begin, It end)
   {
     using namespace std;
-    auto result = Deserialize<Rep>::fromNetworkByteStream(move(begin), move(end));
-    return make_pair(std::chrono::duration<Rep, Ratio>{result.first}, result.second);
+    auto result = Deserialize<int64_t>::fromNetworkByteStream(move(begin), move(end));
+    return make_pair(chrono::microseconds{result.first}, result.second);
   }
 };
 
@@ -305,7 +332,7 @@ BytesIt deserializeContainer(BytesIt bytesBegin,
   return bytesBegin;
 }
 
-} // detail
+} // namespace detail
 
 // Need specific overloads for each container type, but use above
 // utilities for common implementation
@@ -341,12 +368,13 @@ struct Deserialize<std::array<T, Size>>
 template <typename T, typename Alloc>
 std::uint32_t sizeInByteStream(const std::vector<T, Alloc>& vec)
 {
-  return detail::containerSizeInByteStream(vec);
+  return sizeof(uint32_t) + detail::containerSizeInByteStream(vec);
 }
 
 template <typename T, typename Alloc, typename It>
 It toNetworkByteStream(const std::vector<T, Alloc>& vec, It out)
 {
+  out = toNetworkByteStream(static_cast<uint32_t>(vec.size()), out);
   return detail::containerToNetworkByteStream(vec, std::move(out));
 }
 
@@ -358,14 +386,39 @@ struct Deserialize<std::vector<T, Alloc>>
     It bytesBegin, It bytesEnd)
   {
     using namespace std;
+    auto result_size =
+      Deserialize<uint32_t>::fromNetworkByteStream(move(bytesBegin), bytesEnd);
     vector<T, Alloc> result;
-    // Use the number of bytes remaining in the stream as the upper
-    // bound on the number of elements that could be deserialized
-    // since we don't have a better heuristic.
-    auto resultIt = detail::deserializeContainer<T>(move(bytesBegin), move(bytesEnd),
-      back_inserter(result), static_cast<uint32_t>(distance(bytesBegin, bytesEnd)));
-
+    auto resultIt = detail::deserializeContainer<T>(
+      move(result_size.second), move(bytesEnd), back_inserter(result), result_size.first);
     return make_pair(move(result), move(resultIt));
+  }
+};
+
+// 2-tuple
+template <typename X, typename Y>
+std::uint32_t sizeInByteStream(const std::tuple<X, Y>& tup)
+{
+  return sizeInByteStream(std::get<0>(tup)) + sizeInByteStream(std::get<1>(tup));
+}
+
+template <typename X, typename Y, typename It>
+It toNetworkByteStream(const std::tuple<X, Y>& tup, It out)
+{
+  return toNetworkByteStream(
+    std::get<1>(tup), toNetworkByteStream(std::get<0>(tup), std::move(out)));
+}
+
+template <typename X, typename Y>
+struct Deserialize<std::tuple<X, Y>>
+{
+  template <typename It>
+  static std::pair<std::tuple<X, Y>, It> fromNetworkByteStream(It begin, It end)
+  {
+    using namespace std;
+    auto xres = Deserialize<X>::fromNetworkByteStream(begin, end);
+    auto yres = Deserialize<Y>::fromNetworkByteStream(xres.second, end);
+    return make_pair(make_tuple(move(xres.first), move(yres.first)), move(yres.second));
   }
 };
 
@@ -395,8 +448,7 @@ struct Deserialize<std::tuple<X, Y, Z>>
     auto xres = Deserialize<X>::fromNetworkByteStream(begin, end);
     auto yres = Deserialize<Y>::fromNetworkByteStream(xres.second, end);
     auto zres = Deserialize<Z>::fromNetworkByteStream(yres.second, end);
-    return make_pair(
-      std::tuple<X, Y, Z>{move(xres.first), move(yres.first), move(zres.first)},
+    return make_pair(make_tuple(move(xres.first), move(yres.first), move(zres.first)),
       move(zres.second));
   }
 };

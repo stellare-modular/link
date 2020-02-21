@@ -26,15 +26,23 @@
  * by Link.
  */
 
+#if !defined(ESP_PLATFORM)
 #pragma push_macro("ASIO_STANDALONE")
 #define ASIO_STANDALONE 1
 
 #pragma push_macro("ASIO_NO_TYPEID")
 #define ASIO_NO_TYPEID 1
+#endif
 
 #if defined(LINK_PLATFORM_WINDOWS)
 #pragma push_macro("INCL_EXTRA_HTON_FUNCTIONS")
 #define INCL_EXTRA_HTON_FUNCTIONS 1
+#endif
+
+#if defined(WIN32) || defined(_WIN32)
+#if !defined(_WIN32_WINNT)
+#define _WIN32_WINNT 0x0501
+#endif
 #endif
 
 #if defined(__clang__)
@@ -42,9 +50,16 @@
 #if __has_warning("-Wcomma")
 #pragma clang diagnostic ignored "-Wcomma"
 #endif
+#if __has_warning("-Wshorten-64-to-32")
+#pragma clang diagnostic ignored "-Wshorten-64-to-32"
+#endif
+#if __has_warning("-Wunused-local-typedef")
+#pragma clang diagnostic ignored "-Wunused-local-typedef"
+#endif
 #endif
 
 #if defined(_MSC_VER)
+#define _SCL_SECURE_NO_WARNINGS 1
 #pragma warning(push, 0)
 #pragma warning(disable : 4242)
 #pragma warning(disable : 4702)
@@ -57,11 +72,14 @@
 #pragma pop_macro("INCL_EXTRA_HTON_FUNCTIONS")
 #endif
 
+#if !defined(ESP_PLATFORM)
 #pragma pop_macro("ASIO_STANDALONE")
 #pragma pop_macro("ASIO_NO_TYPEID")
+#endif
 
 #if defined(_MSC_VER)
 #pragma warning(pop)
+#undef _SCL_SECURE_NO_WARNINGS
 #endif
 
 #if defined(__clang__)

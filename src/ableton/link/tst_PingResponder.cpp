@@ -23,11 +23,9 @@
 #include <ableton/link/NodeState.hpp>
 #include <ableton/link/PayloadEntries.hpp>
 #include <ableton/link/PingResponder.hpp>
-#include <ableton/link/SessionId.hpp>
 #include <ableton/link/v1/Messages.hpp>
-#include <ableton/platforms/asio/AsioWrapper.hpp>
+#include <ableton/platforms/stl/Random.hpp>
 #include <ableton/test/CatchWrapper.hpp>
-#include <ableton/util/Log.hpp>
 #include <ableton/util/test/IoService.hpp>
 #include <array>
 
@@ -38,16 +36,52 @@ namespace link
 namespace
 {
 
+using Random = ableton::platforms::stl::Random;
+
+struct MockClock
+{
+  std::chrono::microseconds micros() const
+  {
+    return std::chrono::microseconds{4};
+  }
+};
+
+struct MockIoContext
+{
+  template <std::size_t BufferSize>
+  using Socket = discovery::test::Socket;
+
+  template <std::size_t BufferSize>
+  Socket<BufferSize> openUnicastSocket(const asio::ip::address_v4&)
+  {
+    return Socket<BufferSize>(mIo);
+  }
+
+  using Log = util::NullLog;
+
+  Log log() const
+  {
+    return {};
+  }
+
+  template <typename Handler>
+  void async(Handler handler) const
+  {
+    handler();
+  }
+
+  ableton::util::test::IoService mIo;
+};
+
 struct RpFixture
 {
   RpFixture()
     : mAddress(asio::ip::address_v4::from_string("127.0.0.1"))
     , mResponder(mAddress,
-        NodeId::random(),
+        NodeId::random<Random>(),
         GhostXForm{1.0, std::chrono::microseconds{0}},
-        util::injectVal(util::test::IoService{}),
         MockClock{},
-        util::injectVal(util::NullLog{}))
+        util::injectRef(*mIo))
   {
   }
 
@@ -61,17 +95,9 @@ struct RpFixture
     return responderSocket().sentMessages.size();
   }
 
-  struct MockClock
-  {
-    std::chrono::microseconds micros() const
-    {
-      return std::chrono::microseconds{4};
-    }
-  };
-
   asio::ip::address_v4 mAddress = asio::ip::address_v4::from_string("127.0.0.1");
-  PingResponder<util::test::IoService, MockClock, discovery::test::Socket, util::NullLog>
-    mResponder;
+  util::Injected<MockIoContext> mIo;
+  PingResponder<MockClock, MockIoContext> mResponder;
 };
 
 } // anonymous namespace
